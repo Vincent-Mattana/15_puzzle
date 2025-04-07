@@ -1,6 +1,7 @@
 import random
 import copy
 import heapq # Use Python's heapq for the priority queue
+import time # Added for progress indicator
 
 # Placeholder imports for classes that need to be translated later
 # from .heap import Heap # No longer needed
@@ -14,89 +15,29 @@ class NPuzzle:
     _cols = 3
     _total_squares = _rows * _cols
     
-    grid = []
-    solution = []
-    start = []
+    # Removed grid, solution, start instance variables initialized here.
+    # They will be handled within methods or constructor as needed.
     
-    # open_list: list[Node] = [] # The open list (priority queue) for A*, implemented as a heap
-    # closed_list: set[Node] = set() # The closed list (set of visited states) for A*
+    # open_list and closed_list will be initialized in __init__
 
-    def __init__(self):
-        """Initializes the NPuzzle instance by running the text-based setup."""
-        self.start_text()
-
-    def start_text(self):
-        """Handles the initial setup and solving process via text console."""
-        print("\n**************************************")
-        print("            N-PUZZLE SOLVER")
-        print("**************************************")
-        print("         V.W.F Mattana 2013 (Python Port)")
-        print("\n")
+    def __init__(self, n):
+        """Initializes the NPuzzle solver for a given size N."""
+        if not isinstance(n, int) or n <= 1:
+            raise ValueError("N must be an integer greater than 1.")
         
-        while True:
-            try:
-                n_str = input("Please select the N (number of rows/columns):\n")
-                n = int(n_str)
-                if n > 1:
-                    break
-                else:
-                    print("N must be greater than 1.")
-            except ValueError:
-                print("Invalid input. Please enter an integer.")
-
         self._rows = n
         self._cols = n
         self._total_squares = self._rows * self._cols
-        square = self._total_squares - 1
         
-        print(f"\nYou have selected a {n}x{n} puzzle. This is known as the {square}-Puzzle.")
-        print("")
-
-        # Initialize grids based on N
-        self.grid = [[0] * self._cols for _ in range(self._rows)]
+        # Initialize the goal state (solution grid)
         self.solution = [[0] * self._cols for _ in range(self._rows)]
-        self.start = [[0] * self._cols for _ in range(self._rows)]
-        
+        self._setup_solution_grid() # Renamed setup_grid to avoid confusion
+
+        # Initialize A* data structures
         self.open_list = [] # Initialize open list as a list for heapq
-        # Using a set for the closed list allows for efficient checking of visited states (O(1) average time)
         self.closed_list = set()    # Initialize closed list as a set
 
-        print("The grid looks as follows before you shuffle the grid:")
-        self.setup_grid()
-        self.display(self.grid)
-        print("This is also the goal state.")
-        print("")
-
-        while True:
-            try:
-                shuffles_str = input("Please select the number of random moves to use while shuffling:\n")
-                shuffles = int(shuffles_str)
-                if shuffles >= 0:
-                    break
-                else:
-                    print("Number of shuffles cannot be negative.")
-            except ValueError:
-                print("Invalid input. Please enter an integer.")
-
-        print("Shuffling...")
-        self.shuffle(shuffles, self.grid) # Assumes shuffle method exists
-        # Keep a copy of the starting state
-        self.start = copy.deepcopy(self.grid) 
-        
-        print("Your starting state looks like this:")
-        self.display(self.grid) # Assumes display method exists
-        print("")
-        input("Hit the 'Enter' key to solve the puzzle.") # Changed from Scanner wait
-        
-        print("Solving...")
-        goal_node = self.solve() # Call the solver
-        if goal_node:
-            print(f"Goal reached in {goal_node.g} moves!")
-            self._trace_route(goal_node) # Call trace_route to show the path
-        else:
-            print("Could not find a solution.")
-            
-        print("Fin!")
+    # Removed start_text method
 
     # --- Helper Methods ---
     
@@ -106,26 +47,19 @@ class NPuzzle:
 
     # --- Core Logic Methods (Translated from Java) ---
 
-    def setup_grid(self):
-        """Initializes the grid to the solved state (1 to N*N-1, with 0 at the end).
-        Also sets the solution grid.
-        Corresponds to setupGrid in Java.
-        """
+    def _setup_solution_grid(self): # Renamed from setup_grid
+        """Initializes the `self.solution` grid to the solved state."""
         count = 1
         for i in range(self._rows):
             for j in range(self._cols):
-                self.grid[i][j] = count
+                self.solution[i][j] = count
                 count += 1
         # Set the last cell to 0 (blank tile)
-        self.grid[self._rows - 1][self._cols - 1] = 0
-        # Set the solution state
-        self.solution = copy.deepcopy(self.grid)
+        self.solution[self._rows - 1][self._cols - 1] = 0
 
 
     def display(self, array):
-        """Prints the puzzle grid to the console.
-        Corresponds to display in Java.
-        """
+        """Prints the puzzle grid to the console. (Kept for potential debugging)"""
         # Corrected width calculation: 2 for initial "| " + 5 for each cell ("XX | ")
         line_width = 2 + self._cols * 5
         print("-" * line_width)
@@ -140,15 +74,17 @@ class NPuzzle:
             print("-" * line_width)
 
 
-    def shuffle(self, num_shuffles, grid):
-        """Shuffles the grid by making a specified number of random valid moves.
-        Starts from the solved state (which should be in grid before calling).
+    # Shuffle is no longer needed for the core API, but might be useful for testing/future features
+    # Keep shuffle method for now, but it won't be directly called by the solve endpoint
+    def shuffle(self, num_shuffles, start_grid):
+        """Shuffles a given grid by making random valid moves.
         Modifies the grid in place.
-        Corresponds to shuffle in Java.
+        Returns the shuffled grid (same object modified in place).
         """
         print(f"Performing {num_shuffles} random shuffles...")
+        grid = self._copy_grid(start_grid) # Work on a copy
         last_moved = -1 # Prevent immediately moving a tile back
-        for _ in range(num_shuffles):
+        for i in range(num_shuffles):
             moveable_tiles = self._find_moveable_tiles(grid)
             
             # Filter out the tile that was just moved, if possible
@@ -157,14 +93,15 @@ class NPuzzle:
                 possible_moves = moveable_tiles # Use original list if filtering removed all options
             
             if not possible_moves:
-                print("Warning: No moveable tiles found during shuffle? Grid state:")
+                print(f"Warning: No moveable tiles found during shuffle step {i+1}? Grid state:")
                 self.display(grid)
-                break # Should not happen in a valid puzzle > 1x1
+                break 
                 
             # Choose a random tile to move
             tile_to_move = random.choice(possible_moves)
             self._move_tile(tile_to_move, grid) 
             last_moved = tile_to_move # Remember the tile just moved
+        return grid
 
 
     def _find_moveable_tiles(self, grid):
@@ -253,9 +190,7 @@ class NPuzzle:
         return new_grid
 
     def is_goal_state(self, grid):
-        """Checks if the given grid matches the solution state.
-        Corresponds to achievedGoal in Java.
-        """
+        """Checks if the given grid state matches the solution state."""
         return grid == self.solution
 
     def get_rows(self):
@@ -272,159 +207,154 @@ class NPuzzle:
         
     # --- Heuristic Calculation Methods ---
 
-    def _find_number_in_solution(self, num):
-        """Finds the coordinates (row, col) of a number in the solution grid.
-        Helper for heuristic calculation. Corresponds to findNumberInSolution.
-        """
-        # The solution grid is static once setup, so we could potentially cache these
-        # locations if performance becomes an issue for very large N.
+    def find_number_in_solution(self, num):
+        """Finds the coordinates (row, col) of a number in the solution grid."""
+        # This assumes self.solution is already set up
         for r in range(self._rows):
             for c in range(self._cols):
                 if self.solution[r][c] == num:
                     return (r, c)
-        return None # Should not happen for valid tile numbers
+        return None # Should not happen for numbers 1 to N*N-1
 
     def _calculate_tile_heuristic(self, tile_num, current_grid):
-        """Calculates the Manhattan distance for a single tile.
-        Finds the distance between the tile's current position and its goal position.
-        Corresponds to findH in Java.
-        """
-        if tile_num == 0: # Blank tile doesn't contribute to heuristic
-            return 0
+        """Calculates the Manhattan distance for a single tile."""
+        if tile_num == 0:
+            return 0 # Empty space contributes 0 to heuristic
 
         current_pos = self.find_number(tile_num, current_grid)
-        goal_pos = self._find_number_in_solution(tile_num)
+        goal_pos = self.find_number_in_solution(tile_num)
 
         if current_pos and goal_pos:
+            # Manhattan distance: |x1 - x2| + |y1 - y2|
             return abs(current_pos[0] - goal_pos[0]) + abs(current_pos[1] - goal_pos[1])
         else:
-            # Should not happen with valid grids and tile numbers
-            print(f"Error: Could not find position for tile {tile_num} during heuristic calculation.")
-            return 0 
+            # Should not happen in a valid puzzle state
+            print(f"Warning: Could not find position for tile {tile_num} in current or goal state.")
+            return 0
 
     def calculate_state_heuristic(self, current_grid):
-        """Calculates the total Manhattan distance heuristic for the entire grid state.
-        Sums the Manhattan distance for each tile (except 0) to its goal position.
-        Corresponds to stateH in Java.
-        """
+        """Calculates the total Manhattan distance heuristic for the given grid state."""
         total_heuristic = 0
         for r in range(self._rows):
             for c in range(self._cols):
                 tile_num = current_grid[r][c]
-                if tile_num != 0: # Skip the blank tile
-                    total_heuristic += self._calculate_tile_heuristic(tile_num, current_grid)
+                total_heuristic += self._calculate_tile_heuristic(tile_num, current_grid)
         return total_heuristic
         
     # --- A* Solver Methods ---
     
-    def solve(self):
-        """Attempts to solve the N-Puzzle using the A* algorithm.
-        Returns the goal Node if a solution is found, otherwise None.
-        Corresponds to solver in Java.
+    def solve(self, start_grid): # Takes start_grid as input
+        """Solves the N-Puzzle using A* search starting from the given grid.
+
+        Args:
+            start_grid (list[list[int]]): The initial state of the puzzle.
+
+        Returns:
+            Node: The goal node if a solution is found, otherwise None.
         """
-        # Initialize the start node
-        start_h = self.calculate_state_heuristic(self.start)
-        start_node = Node(grid=self.start, g=0, h=start_h, parent=None)
-        
-        # Reset open and closed lists
-        self.open_list = []
+        # Reset lists for potentially multiple solves with the same instance
+        self.open_list = [] 
         self.closed_list = set()
-        
-        # Add start node to the open list (priority queue)
+
+        # Create the starting node
+        start_h = self.calculate_state_heuristic(start_grid)
+        start_node = Node(grid=start_grid, g=0, h=start_h, parent=None)
+
+        # Add the starting node to the open list (priority queue)
         heapq.heappush(self.open_list, start_node)
         
-        nodes_expanded = 0
-        
-        while self.open_list: # While the open list is not empty
-            # Get the node with the lowest f score
+        processed_nodes = 0
+        start_time = time.time()
+
+        while self.open_list:
+            # Get the node with the lowest f value from the priority queue
             current_node = heapq.heappop(self.open_list)
-            nodes_expanded += 1
-
-            # --- Progress Indicator --- 
-            if nodes_expanded % 1000 == 0:
-                print(f"\rExpanded {nodes_expanded} nodes... Current f={current_node.f}", end="")
-            # --------------------------
-
-            # Goal check
-            if self.is_goal_state(current_node.grid):
-                print(f"\nSolution found! Expanded {nodes_expanded} nodes.") # Add newline before final message
-                return current_node # Goal reached!
-
-            # Skip if already visited (handles duplicates in heap efficiently)
-            if current_node in self.closed_list:
-                continue
-                
-            # Add current node to the closed list
-            self.closed_list.add(current_node)
-
-            # Generate successors
-            successors = self._generate_successors(current_node)
             
-            for successor_node in successors:
-                # If successor is already visited, skip
-                if successor_node in self.closed_list:
+            processed_nodes += 1
+            if processed_nodes % 1000 == 0: # Print progress indicator
+                elapsed_time = time.time() - start_time
+                print(f"Processed {processed_nodes} nodes... Open list size: {len(self.open_list)}, Current f={current_node.f}, Time: {elapsed_time:.2f}s", end='\\r')
+
+
+            # Check if this node represents the goal state
+            if self.is_goal_state(current_node.grid):
+                end_time = time.time()
+                print(f"\\nGoal found! Processed {processed_nodes} nodes in {end_time - start_time:.2f} seconds.")
+                return current_node # Goal reached
+
+            # Add the current node to the closed list to avoid revisiting
+            self.closed_list.add(current_node) # Relies on Node's __hash__ and __eq__
+
+            # Generate successor nodes (neighbors)
+            successors = self._generate_successors(current_node)
+
+            for successor in successors:
+                # If successor is already in closed list, skip it
+                if successor in self.closed_list:
                     continue
-                    
-                # Add valid, unvisited successor to the open list
-                # heapq handles the priority queue logic based on Node comparison (__lt__)
-                heapq.heappush(self.open_list, successor_node)
-                
-        # If the loop finishes without finding the goal
-        print(f"\nNo solution found after expanding {nodes_expanded} nodes.") # Add newline
-        return None
+
+                # Check if a node with the same state is already in the open list
+                # This requires iterating or a more complex lookup structure if performance is critical
+                # For heapq, we might push duplicates and rely on pulling the best one first.
+                # A simple check:
+                is_in_open = False
+                for open_node in self.open_list:
+                     if open_node == successor: # Check grid equality
+                          is_in_open = True
+                          # If the new path to this state is better, update the existing node
+                          if successor.g < open_node.g:
+                              # Update logic depends on heap implementation;
+                              # Standard heapq doesn't easily support decreasing key.
+                              # Easiest is often to just add the better path; the worse one
+                              # will eventually be popped and ignored if already closed.
+                              # Let's stick to adding it and relying on closed list check.
+                              pass # Keep the better g-value already potentially in the heap
+                          break # Found matching state in open list
+
+                if not is_in_open:
+                    heapq.heappush(self.open_list, successor)
+
+        print(f"\\nSearch completed. Processed {processed_nodes} nodes. No solution found.")
+        return None # No solution found
+
 
     def _generate_successors(self, current_node):
-        """Generates all valid successor nodes from the current node's state.
-        Corresponds to findSuccessors in Java.
-        """
+        """Generates all valid successor nodes from the current node."""
         successors = []
         moveable_tiles = self._find_moveable_tiles(current_node.grid)
-        
-        for tile_num in moveable_tiles:
+
+        for tile in moveable_tiles:
             # Simulate the move on a copy of the grid
-            new_grid = self._simulate_move(tile_num, current_node.grid)
-            
-            if new_grid:
-                # Calculate costs for the new state
-                g_cost = current_node.g + 1
-                h_cost = self.calculate_state_heuristic(new_grid)
+            new_grid = self._simulate_move(tile, current_node.grid)
+            if new_grid: # If the move was valid
                 # Create the successor node
-                successor = Node(grid=new_grid, g=g_cost, h=h_cost, parent=current_node)
-                successors.append(successor)
-                
+                g_cost = current_node.g + 1 # Cost increases by 1 for each move
+                h_cost = self.calculate_state_heuristic(new_grid)
+                successor_node = Node(grid=new_grid, g=g_cost, h=h_cost, parent=current_node)
+                successors.append(successor_node)
         return successors
         
     # --- Path Tracing ---
     
-    def _trace_route(self, goal_node):
-        """Reconstructs and prints the solution path from the goal node.
-        Waits for user input between steps.
-        Corresponds to traceRoute in Java.
+    def get_solution_path(self, goal_node): # Renamed from _trace_route and modified return
+        """Traces the path from the goal node back to the start node.
+
+        Args:
+            goal_node (Node): The goal node returned by the solve method.
+
+        Returns:
+            list[list[list[int]]]: A list of grids representing the solution path
+                                   from start to goal, or an empty list if goal_node is None.
         """
         if not goal_node:
-            print("No goal node provided for tracing.")
-            return
-            
+            return []
+
         path = []
         current = goal_node
-        while current:
-            path.insert(0, current) # Insert at the beginning to reverse the path
+        while current is not None:
+            path.append(current.grid) # Add the grid state
             current = current.parent
-            
-        print("\n--- Solution Path ---")
-        print(f"Total moves: {goal_node.g}")
-        print("(Hit 'Enter' to see the next step)")
         
-        for i, node in enumerate(path):
-            print(f"\nStep {i}:")
-            self.display(node.grid)
-            print(f"  g = {node.g}, h = {node.h}, f = {node.f}")
-            if i < len(path) - 1:
-                # Wait for user input before showing the next step
-                input("...") 
-            else:
-                print("\n--- Goal Reached ---")
+        return path[::-1] # Reverse the path to get start -> goal order
 
-    # --- Main execution ---
-if __name__ == "__main__":
-    puzzle = NPuzzle() 
+# Removed the if __name__ == "__main__": block 
